@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101018">
+  <title>GuadaTTS — Twitch</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #101018; color: #f4f1fa; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 32px 18px; background: radial-gradient(ellipse at top, #211533 0, #101018 55%); }
+    main { width: min(920px, 100%); margin: 0 auto; }
+    header { margin-bottom: 24px; }
+    h1 { margin: 0 0 6px; font-size: clamp(1.7rem, 5vw, 2.4rem); }
+    .subtitle, .muted { color: #b7adbf; }
+    .card { background: #191720; border: 1px solid #342c3c; border-radius: 16px; padding: 20px; margin: 16px 0; box-shadow: 0 10px 30px #0003; }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    label { font-weight: 600; }
+    input[type="text"] { flex: 1 1 220px; min-width: 0; padding: 11px 12px; border: 1px solid #51465c; border-radius: 9px; background: #100e15; color: inherit; font: inherit; }
+    button { border: 0; border-radius: 9px; padding: 11px 15px; background: #9147ff; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover { background: #a76bff; }
+    button.secondary { background: #37313f; }
+    button.secondary:hover { background: #4a4155; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .check { display: inline-flex; gap: 9px; align-items: center; cursor: pointer; font-weight: 500; }
+    input[type="checkbox"] { accent-color: #9147ff; width: 18px; height: 18px; }
+    .status { display: flex; align-items: center; gap: 9px; font-size: .95rem; }
+    .dot { width: 10px; height: 10px; display: inline-block; border-radius: 50%; background: #9c8ea6; }
+    .dot.connected { background: #47d18c; box-shadow: 0 0 10px #47d18c88; }
+    .dot.error { background: #ff626f; }
+    .log { height: min(48vh, 430px); min-height: 200px; overflow-y: auto; padding: 12px; border-radius: 10px; background: #100e15; border: 1px solid #302938; }
+    .entry { padding: 10px 8px; border-bottom: 1px solid #2b2531; overflow-wrap: anywhere; }
+    .entry:last-child { border-bottom: 0; }
+    .entry strong { color: #c69bff; }
+    .entry.blocked { opacity: .62; }
+    .entry .badge { margin-left: 8px; color: #ff9aa2; font-size: .8rem; }
+    .blacklist { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 999px; background: #332536; color: #f5d6dc; }
+    .chip button { padding: 0 2px; background: transparent; color: inherit; font-size: 1.1rem; }
+    .notice { color: #c7b9d1; font-size: .9rem; line-height: 1.5; }
+    .obs header { text-align: center; }
+    .obs .card { background: #101018e8; }
+    .obs .log { height: 100vh; max-height: none; border: 0; background: transparent; font-size: clamp(1rem, 2.2vw, 1.7rem); }
+    .obs body { padding: 12px; background: transparent; }
+    [hidden] { display: none !important; }
+    @media (max-width: 560px) { body { padding: 22px 12px; } .card { padding: 16px; } .row > button { flex: 1; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>GuadaTTS <span class="muted">× Twitch</span></h1>
+      <div class="subtitle">Leia mensagens do chat que começam com <code>!m</code> ou <code>!msg</code>.</div>
+    </header>
+
+    <section class="card" id="setupCard" aria-label="Conexão com a Twitch">
+      <form id="connectForm" class="row">
+        <label for="channel">Canal da Twitch</label>
+        <input id="channel" name="twitch" type="text" placeholder="Ex.: cellbit" autocomplete="off" required>
+        <button type="submit">Conectar</button>
+      </form>
+      <p class="notice">A conexão é somente leitura e usa o chat público. Não é necessário informar senha ou token da Twitch.</p>
+    </section>
+
+    <section class="card" id="controlsCard" aria-label="Controles de voz">
+      <div class="row">
+        <div class="status" role="status" aria-live="polite"><span class="dot" id="statusDot"></span><span id="statusText">Desconectado</span></div>
+        <label class="check"><input type="checkbox" id="readName" checked> Ler o nome de quem enviou</label>
+        <button type="button" id="toggleTts">Desligar TTS</button>
+        <button type="button" class="secondary" id="skipTts">Pular TTS</button>
+        <button type="button" class="secondary" id="copyLink">Copiar link para OBS</button>
+      </div>
+      <p class="notice">A voz usa a síntese de fala nativa do navegador (Web Speech API). No OBS, adicione uma fonte de navegador e cole o link copiado.</p>
+    </section>
+
+    <section class="card" id="blacklistCard" aria-label="Lista de bloqueio">
+      <h2>Blacklist</h2>
+      <p class="notice">Estas pessoas ainda aparecem nos logs, mas suas mensagens não serão lidas.</p>
+      <form id="blacklistForm" class="row">
+        <label for="blacklistInput">Adicionar usuário</label>
+        <input id="blacklistInput" type="text" placeholder="Nome de usuário da Twitch" autocomplete="off">
+        <button type="submit">Adicionar</button>
+      </form>
+      <div class="blacklist" id="blacklist" aria-live="polite"></div>
+    </section>
+
+    <section class="card" aria-label="Mensagens do chat">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px">
+        <h2 style="margin:0">Mensagens</h2><span class="muted" id="logCount">0 mensagens</span>
+      </div>
+      <div class="log" id="log" role="log" aria-live="polite" aria-relevant="additions"></div>
+      <p class="muted" id="emptyLog">As mensagens !m e !msg aparecerão aqui.</p>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      const channelInput = document.querySelector('#channel');
+      const connectForm = document.querySelector('#connectForm');
+      const statusText = document.querySelector('#statusText');
+      const statusDot = document.querySelector('#statusDot');
+      const log = document.querySelector('#log');
+      const emptyLog = document.querySelector('#emptyLog');
+      const logCount = document.querySelector('#logCount');
+      const ttsToggle = document.querySelector('#toggleTts');
+      const queue = [];
+      let socket = null;
+      let reconnectTimer = null;
+      let reconnectDelay = 1500;
+      let activeChannel = '';
+      let ttsEnabled = true;
+      let messageCount = 0;
+      let voiceList = [];
+
+      const blacklistKey = 'guadatts-blacklist-v1';
+      let blacklist = readBlacklist();
+
+      function readBlacklist() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(blacklistKey) || '[]');
+          return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string').map(x => x.toLowerCase()) : [];
+        } catch { return []; }
+      }
+      function saveBlacklist() { localStorage.setItem(blacklistKey, JSON.stringify(blacklist)); }
+      function renderBlacklist() {
+        const container = document.querySelector('#blacklist');
+        container.replaceChildren();
+        blacklist.forEach(name => {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          const text = document.createElement('span'); text.textContent = name;
+          const remove = document.createElement('button'); remove.type = 'button'; remove.setAttribute('aria-label', `Remover ${name} da blacklist`); remove.textContent = '×';
+          remove.addEventListener('click', () => { blacklist = blacklist.filter(item => item !== name); saveBlacklist(); renderBlacklist(); });
+          chip.append(text, remove); container.append(chip);
+        });
+      }
+      function setStatus(message, state = '') {
+        statusText.textContent = message;
+        statusDot.className = `dot ${state}`;
+      }
+      function addLog(username, text, blocked) {
+        const entry = document.createElement('div'); entry.className = `entry${blocked ? ' blocked' : ''}`;
+        const name = document.createElement('strong'); name.textContent = username;
+        const body = document.createElement('span'); body.textContent = `: ${text}`;
+        entry.append(name, body);
+        if (blocked) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = 'bloqueado'; entry.append(badge); }
+        log.append(entry); messageCount++;
+        while (log.children.length > 150) log.firstElementChild.remove();
+        emptyLog.hidden = true;
+        logCount.textContent = `${messageCount} ${messageCount === 1 ? 'mensagem' : 'mensagens'}`;
+        log.scrollTop = log.scrollHeight;
+      }
+      function decodeIrc(value) {
+        return value.replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\r/g, '\r').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+      }
+      function onIrcLine(line) {
+        if (line.startsWith('PING ')) { if (socket?.readyState === WebSocket.OPEN) socket.send(`PONG ${line.slice(5)}`); return; }
+        const match = line.match(/^(?:@([^ ]+) )?:([^! ]+)!.* PRIVMSG #[^ ]+ :(.*)$/);
+        if (!match) return;
+        const tags = Object.fromEntries((match[1] || '').split(';').filter(Boolean).map(tag => {
+          const index = tag.indexOf('=');
+          return index < 0 ? [tag, ''] : [tag.slice(0, index), decodeIrc(tag.slice(index + 1))];
+        }));
+        const username = tags['display-name'] || match[2];
+        const message = match[3];
+        const command = message.match(/^!(?:m|msg)(?:\s+|$)(.*)$/i);
+        if (!command) return;
+        const text = command[1].trim();
+        if (!text) return;
+        const blocked = blacklist.includes(username.toLowerCase());
+        addLog(username, text, blocked);
+        if (!blocked && ttsEnabled) { queue.push({ username, text }); speakNext(); }
+      }
+      function connect(channel) {
+        activeChannel = channel;
+        clearTimeout(reconnectTimer);
+        if (socket) { socket.onclose = null; socket.close(); }
+        setStatus(`Conectando a #${channel}…`);
+        try { socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443'); }
+        catch { setStatus('Não foi possível abrir a conexão com a Twitch.', 'error'); return; }
+        socket.onopen = () => {
+          reconnectDelay = 1500;
+          const guest = `justinfan${Math.floor(100000 + Math.random() * 900000)}`;
+          socket.send('PASS SCHMOOPIIE');
+          socket.send(`NICK ${guest}`);
+          socket.send('CAP REQ :twitch.tv/tags');
+          socket.send(`JOIN #${channel}`);
+          setStatus(`Conectado ao chat de #${channel}`, 'connected');
+        };
+        socket.onmessage = event => String(event.data).split('\r\n').forEach(line => line && onIrcLine(line));
+        socket.onerror = () => setStatus('Erro na conexão. Tentando reconectar…', 'error');
+        socket.onclose = () => {
+          if (activeChannel !== channel) return;
+          setStatus(`Conexão encerrada. Reconectando a #${channel}…`);
+          reconnectTimer = setTimeout(() => { reconnectDelay = Math.min(reconnectDelay * 1.7, 30000); connect(channel); }, reconnectDelay);
+        };
+      }
+      function loadVoices() { voiceList = window.speechSynthesis?.getVoices() || []; }
+      function speakNext() {
+        if (!ttsEnabled || !window.speechSynthesis || window.speechSynthesis.speaking || queue.length === 0) return;
+        const item = queue.shift();
+        const utterance = new SpeechSynthesisUtterance(document.querySelector('#readName').checked ? `${item.username} falou: ${item.text}` : item.text);
+        utterance.lang = 'pt-BR';
+        const portugueseVoice = voiceList.find(voice => voice.lang.toLowerCase().startsWith('pt-br')) || voiceList.find(voice => voice.lang.toLowerCase().startsWith('pt'));
+        if (portugueseVoice) utterance.voice = portugueseVoice;
+        utterance.onend = speakNext;
+        utterance.onerror = speakNext;
+        window.speechSynthesis.speak(utterance);
+      }
+      connectForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const channel = channelInput.value.trim().replace(/^@/, '').toLowerCase();
+        if (!/^[a-z0-9_]{1,25}$/.test(channel)) { setStatus('Digite um nome de canal válido.', 'error'); channelInput.focus(); return; }
+        channelInput.value = channel;
+        params.set('twitch', channel);
+        history.replaceState(null, '', `${location.pathname}?${params.toString()}`);
+        connect(channel);
+      });
+      document.querySelector('#blacklistForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const input = document.querySelector('#blacklistInput');
+        const name = input.value.trim().replace(/^@/, '').toLowerCase();
+        if (!/^[a-z0-9_]{1,25}$/.test(name)) { input.focus(); return; }
+        if (!blacklist.includes(name)) { blacklist.push(name); blacklist.sort(); saveBlacklist(); renderBlacklist(); }
+        input.value = '';
+      });
+      ttsToggle.addEventListener('click', () => {
+        ttsEnabled = !ttsEnabled;
+        ttsToggle.textContent = ttsEnabled ? 'Desligar TTS' : 'Ligar TTS';
+        if (!ttsEnabled) { queue.length = 0; window.speechSynthesis?.cancel(); }
+        else speakNext();
+      });
+      document.querySelector('#skipTts').addEventListener('click', () => {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        speakNext();
+      });
+      document.querySelector('#copyLink').addEventListener('click', async event => {
+        const channel = activeChannel || channelInput.value.trim().replace(/^@/, '').toLowerCase();
+        if (!channel) { setStatus('Informe o canal antes de copiar o link.', 'error'); channelInput.focus(); return; }
+        const url = new URL(location.href); url.search = ''; url.searchParams.set('twitch', channel); url.searchParams.set('obs_link', 'true');
+        try { await navigator.clipboard.writeText(url.toString()); event.currentTarget.textContent = 'Link copiado!'; setTimeout(() => { event.currentTarget.textContent = 'Copiar link para OBS'; }, 1800); }
+        catch { window.prompt('Copie o link para usar como fonte de navegador no OBS:', url.toString()); }
+      });
+
+      renderBlacklist();
+      loadVoices();
+      if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = loadVoices;
+      if (!window.speechSynthesis) { ttsToggle.disabled = true; setStatus('Este navegador não oferece síntese de fala.', 'error'); }
+      channelInput.value = params.get('twitch') || '';
+      const obsMode = params.get('obs_link') === 'true';
+      if (obsMode) {
+        document.body.classList.add('obs');
+        document.querySelector('#setupCard').hidden = true;
+        document.querySelector('#controlsCard').hidden = true;
+        document.querySelector('#blacklistCard').hidden = true;
+      }
+      if (channelInput.value) {
+        const channel = channelInput.value.trim().replace(/^@/, '').toLowerCase();
+        if (/^[a-z0-9_]{1,25}$/.test(channel)) connect(channel);
+        else setStatus('O nome de canal na URL é inválido.', 'error');
+      }
+    })();
+  </script>
+</body>
+</html>
