@@ -38,10 +38,39 @@
     .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 999px; background: #332536; color: #f5d6dc; }
     .chip button { padding: 0 2px; background: transparent; color: inherit; font-size: 1.1rem; }
     .notice { color: #c7b9d1; font-size: .9rem; line-height: 1.5; }
-    .obs header { text-align: center; }
-    .obs .card { background: #101018e8; }
-    .obs .log { height: 100vh; max-height: none; border: 0; background: transparent; font-size: clamp(1rem, 2.2vw, 1.7rem); }
-    .obs body { padding: 12px; background: transparent; }
+
+    /* Modo somente OBS: fundo transparente e última mensagem persistente */
+    .obs { background: transparent !important; color-scheme: normal; }
+    .obs body { min-height: 100vh; height: 100vh; padding: 16px; background: transparent !important; }
+    .obs main { width: 100%; height: 100%; margin: 0; }
+    .obs header,
+    .obs #setupCard,
+    .obs #controlsCard,
+    .obs #blacklistCard,
+    .obs main > section[aria-label="Mensagens do chat"] > .row,
+    .obs #emptyLog { display: none !important; }
+    .obs main > section[aria-label="Mensagens do chat"] {
+      width: 100%; height: 100%; margin: 0; padding: 0;
+      background: transparent !important; border: 0; border-radius: 0;
+      box-shadow: none;
+    }
+    .obs .log {
+      width: 100%; height: 100%; min-height: 0; max-height: none;
+      padding: 0; overflow: hidden;
+      background: transparent !important; border: 0; border-radius: 0;
+      font-size: clamp(18px, 2.2vw, 34px);
+      line-height: 1.35;
+      text-shadow: 0 2px 3px #000, 0 0 8px #000;
+      display: flex;
+      align-items: flex-end;
+    }
+    .obs .entry {
+      width: 100%; padding: 12px;
+      border: 0; overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+    .obs .entry strong { color: #d3b1ff; }
+
     [hidden] { display: none !important; }
     @media (max-width: 560px) { body { padding: 22px 12px; } .card { padding: 16px; } .row > button { flex: 1; } }
   </style>
@@ -112,6 +141,7 @@
       let ttsEnabled = true;
       let messageCount = 0;
       let voiceList = [];
+      const obsMode = params.get('obs_link') === 'true';
 
       const blacklistKey = 'guadatts-blacklist-v1';
       let blacklist = readBlacklist();
@@ -145,8 +175,16 @@
         const body = document.createElement('span'); body.textContent = `: ${text}`;
         entry.append(name, body);
         if (blocked) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = 'bloqueado'; entry.append(badge); }
-        log.append(entry); messageCount++;
-        while (log.children.length > 150) log.firstElementChild.remove();
+
+        // No modo OBS, somente a última mensagem fica exibida até chegar a próxima.
+        if (obsMode) {
+          log.replaceChildren(entry);
+        } else {
+          log.append(entry);
+          while (log.children.length > 150) log.firstElementChild.remove();
+        }
+
+        messageCount++;
         emptyLog.hidden = true;
         logCount.textContent = `${messageCount} ${messageCount === 1 ? 'mensagem' : 'mensagens'}`;
         log.scrollTop = log.scrollHeight;
@@ -249,8 +287,8 @@
       if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = loadVoices;
       if (!window.speechSynthesis) { ttsToggle.disabled = true; setStatus('Este navegador não oferece síntese de fala.', 'error'); }
       channelInput.value = params.get('twitch') || '';
-      const obsMode = params.get('obs_link') === 'true';
       if (obsMode) {
+        document.documentElement.classList.add('obs');
         document.body.classList.add('obs');
         document.querySelector('#setupCard').hidden = true;
         document.querySelector('#controlsCard').hidden = true;
